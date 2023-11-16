@@ -21,6 +21,14 @@ dependencies {
     implementation("software.momento.java:sdk:1.4.0")
     implementation("com.amazonaws:dynamodb-lock-client:1.2.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.15.0")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:2.15.0")
+    implementation("com.fasterxml.jackson.core:jackson-core:2.15.0")
+    implementation("com.google.code.findbugs:jsr305:3.0.2")
+    implementation("commons-logging:commons-logging:1.2")
+    implementation("software.amazon.awssdk:aws-core:2.20.8")
+    implementation("software.amazon.awssdk:dynamodb:2.20.8")
+    implementation("software.amazon.awssdk:sdk-core:2.20.8")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.3")
 }
 
 testing {
@@ -38,4 +46,8 @@ java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(8))
     }
+}
+
+tasks.named("analyzeTestClassesDependencies").configure {
+    enabled = false
 }
