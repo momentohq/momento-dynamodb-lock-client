@@ -29,6 +29,8 @@ public class MomentoDynamoDBLockClientTest {
     private static MomentoLockClient momentoLockClient;
     private static MomentoLockClient momentoLockClientNoHeartBeats;
 
+    private static CacheClient cacheClient;
+
     private static String LOCK_CACHE_NAME = "lock";
     private static String LOCK_CACHE_NAME_NO_HEARTBEATS = "lock_no_heartbeats";
     @BeforeAll
@@ -48,15 +50,17 @@ public class MomentoDynamoDBLockClientTest {
                 .withCredentialProvider(CredentialProvider.fromEnvVar("MOMENTO_API_KEY"))
                 .withPartitionKeyName("pkey")
                 .withOwnerName("lock-client-lib")
-                .withLeaseDuration(5L)
+                .withLeaseDuration(2L)
                 .withCreateHeartbeatBackgroundThread(false)
                 .withTimeUnit(TimeUnit.SECONDS)
                 .build());
+
+
         // momento client to verify lock assertions
-        momentoLockClient = new MomentoLockClient(CacheClient.create(CredentialProvider.fromEnvVar("MOMENTO_API_KEY"),
-                Configurations.Laptop.latest(), Duration.ofSeconds(60)), LOCK_CACHE_NAME);
-        momentoLockClientNoHeartBeats = new MomentoLockClient(CacheClient.create(CredentialProvider.fromEnvVar("MOMENTO_API_KEY"),
-                Configurations.Laptop.latest(), Duration.ofSeconds(60)), LOCK_CACHE_NAME_NO_HEARTBEATS);
+        cacheClient = CacheClient.create(CredentialProvider.fromEnvVar("MOMENTO_API_KEY"),
+                Configurations.Laptop.latest(), Duration.ofSeconds(60));
+        momentoLockClient = new MomentoLockClient(cacheClient, LOCK_CACHE_NAME);
+        momentoLockClientNoHeartBeats = new MomentoLockClient(cacheClient, LOCK_CACHE_NAME_NO_HEARTBEATS);
         momentoLockClient.createLockCache(LOCK_CACHE_NAME);
         momentoLockClient.createLockCache(LOCK_CACHE_NAME_NO_HEARTBEATS);
     }
@@ -242,6 +246,8 @@ public class MomentoDynamoDBLockClientTest {
     @AfterAll
     public static void cleanup() throws IOException {
         momentoDynamoDBLockClient.close();
+        cacheClient.deleteCache(LOCK_CACHE_NAME);
+        cacheClient.deleteCache(LOCK_CACHE_NAME_NO_HEARTBEATS);
     }
 
     static String generateUniquePartitionKey() {
