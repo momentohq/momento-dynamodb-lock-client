@@ -39,13 +39,15 @@ public class MomentoLockClientHeartbeatHandler implements Runnable, Closeable {
                                              final CacheClient client,
                                              final String cacheName,
                                              final Duration leaseDuration,
-                                             final boolean holdLockOnServiceUnavailable) {
+                                             final boolean holdLockOnServiceUnavailable,
+                                             final int totalNumBackgroundHeartbeatThreads) {
         this.lockStorage = lockStorage;
         this.cacheClient = client;
         this.cacheName = cacheName;
         this.leaseDuration = leaseDuration;
         this.holdLockOnServiceUnavailable = holdLockOnServiceUnavailable;
-        this.heartbeatExecutor = new ThreadPoolExecutor(10, 10, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+        this.heartbeatExecutor = new ThreadPoolExecutor(totalNumBackgroundHeartbeatThreads,
+                totalNumBackgroundHeartbeatThreads, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     }
 
     int rounds = 0;
@@ -153,7 +155,6 @@ public class MomentoLockClientHeartbeatHandler implements Runnable, Closeable {
 
     @Override
     public void close() throws IOException {
-
         this.heartbeatExecutor.shutdown();
     }
 }

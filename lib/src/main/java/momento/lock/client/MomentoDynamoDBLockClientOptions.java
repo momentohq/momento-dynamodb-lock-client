@@ -2,7 +2,6 @@ package momento.lock.client;
 
 import momento.sdk.auth.CredentialProvider;
 import momento.sdk.config.Configuration;
-import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 import java.net.Inet4Address;
 import java.net.UnknownHostException;
@@ -20,7 +19,11 @@ public class MomentoDynamoDBLockClientOptions {
 
     protected static final String DEFAULT_PARTITION_KEY_NAME = "key";
     protected static final Long DEFAULT_LEASE_DURATION = 20L;
+    protected static final Integer DEFAULT_ACQUIRE_LOCKS_EXECUTOR_NUM_THREADS = 8;
+
     protected static final Long DEFAULT_HEARTBEAT_PERIOD = 5L;
+    protected static final Integer DEFAULT_HEARTBEAT_EXECUTOR_NUM_THREADS = 1;
+
     protected static final TimeUnit DEFAULT_TIME_UNIT = TimeUnit.SECONDS;
     protected static final Boolean DEFAULT_CREATE_HEARTBEAT_BACKGROUND_THREAD = true;
     protected static final Boolean DEFAULT_HOLD_LOCK_ON_SERVICE_UNAVAILABLE = false;
@@ -30,16 +33,21 @@ public class MomentoDynamoDBLockClientOptions {
     private final Optional<String> sortKeyName;
     private final String ownerName;
     private final Long leaseDuration;
+    private int totalNumThreadsForAcquiringLocks;
+
     private final Long heartbeatPeriod;
+
     private final TimeUnit timeUnit;
     private final Boolean createHeartbeatBackgroundThread;
+    private int totalNumBackgroundThreadsForHeartbeating;
+
     private final Function<String, ThreadFactory> namedThreadCreator;
     private final Boolean holdLockOnServiceUnavailable;
 
     private MomentoDynamoDBLockClientOptions(final Configuration configuration, final CredentialProvider credentialProvider,
                                              final String tableName, final String partitionKeyName, final Optional<String> sortKeyName,
-                                            final String ownerName, final Long leaseDuration, final Long heartbeatPeriod, final TimeUnit timeUnit, final Boolean createHeartbeatBackgroundThread,
-                                            final Function<String, ThreadFactory> namedThreadCreator, final Boolean holdLockOnServiceUnavailable) {
+                                            final String ownerName, final Long leaseDuration, final int totalNumBackgroundThreadsForHeartbeating, final Long heartbeatPeriod, final TimeUnit timeUnit, final Boolean createHeartbeatBackgroundThread,
+                                            final int totalNumThreadsForAcquiringLocks, final Function<String, ThreadFactory> namedThreadCreator, final Boolean holdLockOnServiceUnavailable) {
         this.configuration = configuration;
         this.credentialProvider = credentialProvider;
         this.tableName = tableName;
@@ -48,9 +56,11 @@ public class MomentoDynamoDBLockClientOptions {
         this.sortKeyName = sortKeyName;
         this.ownerName = ownerName;
         this.leaseDuration = leaseDuration;
+        this.totalNumThreadsForAcquiringLocks = totalNumThreadsForAcquiringLocks;
         this.heartbeatPeriod = heartbeatPeriod;
         this.timeUnit = timeUnit;
         this.createHeartbeatBackgroundThread = createHeartbeatBackgroundThread;
+        this.totalNumBackgroundThreadsForHeartbeating = totalNumBackgroundThreadsForHeartbeating;
         this.namedThreadCreator = namedThreadCreator;
         this.holdLockOnServiceUnavailable = holdLockOnServiceUnavailable;
     }
@@ -108,15 +118,25 @@ public class MomentoDynamoDBLockClientOptions {
         return configuration;
     }
 
+    public int getTotalNumThreadsForAcquiringLocks() {
+        return totalNumThreadsForAcquiringLocks;
+    }
+
+    public int getTotalNumBackgroundThreadsForHeartbeating() {
+        return totalNumBackgroundThreadsForHeartbeating;
+    }
+
     public static class MomentoDynamoDBLockClientOptionsBuilder {
         private String tableName;
         private String partitionKeyName;
         private Optional<String> sortKeyName;
         private String ownerName;
         private Long leaseDuration;
+        private int totalNumThreadsForAcquiringLocks;
         private Long heartbeatPeriod;
         private TimeUnit timeUnit;
         private Boolean createHeartbeatBackgroundThread;
+        private int totalNumBackgroundThreadsForHeartbeating;
         private Boolean holdLockOnServiceUnavailable;
         private Function<String, ThreadFactory> namedThreadCreator;
 
@@ -148,9 +168,11 @@ public class MomentoDynamoDBLockClientOptions {
             this.tableName = tableName;
             this.partitionKeyName = DEFAULT_PARTITION_KEY_NAME;
             this.leaseDuration = DEFAULT_LEASE_DURATION;
+            this.totalNumThreadsForAcquiringLocks = DEFAULT_ACQUIRE_LOCKS_EXECUTOR_NUM_THREADS;
             this.heartbeatPeriod = DEFAULT_HEARTBEAT_PERIOD;
             this.timeUnit = DEFAULT_TIME_UNIT;
             this.createHeartbeatBackgroundThread = DEFAULT_CREATE_HEARTBEAT_BACKGROUND_THREAD;
+            this.totalNumBackgroundThreadsForHeartbeating = DEFAULT_HEARTBEAT_EXECUTOR_NUM_THREADS;
             this.sortKeyName = Optional.empty();
             this.ownerName = ownerName == null ? generateOwnerNameFromLocalhost() : ownerName;
             this.namedThreadCreator = namedThreadCreator == null ? namedThreadCreator() : namedThreadCreator;
@@ -168,6 +190,31 @@ public class MomentoDynamoDBLockClientOptions {
         }
 
         /**
+         * If you expect each client to own tens or hundreds of locks, you can configure the thread pool size
+         * of {@link MomentoLockClientHeartbeatHandler} so that I heartbeats individual locks in parallel. This might
+         * be important as you don't want one thread to play catchup while heartbeating, eventually leading to locks being
+         * released. The default value for this is 1.
+         * @param totalNumBackgroundThreadsForHeartbeating
+         * @return a reference to this builder for fluent method chaining
+         */
+        public MomentoDynamoDBLockClientOptionsBuilder withTotalNumBackgroundThreadsForHeartbeating(final int totalNumBackgroundThreadsForHeartbeating) {
+            this.totalNumBackgroundThreadsForHeartbeating = totalNumBackgroundThreadsForHeartbeating;
+            return this;
+        }
+
+        /**
+         * This library uses a lightweight executor to submit tasks for acquiring locks and to schedule any retries
+         * if applicable for locks that are acquired to achieve a blocking behavior. The default value is 8 and can be
+         * overriden through this option.
+         * @param totalNumThreadsForAcquiringLocks
+         * @return a reference to this builder for fluent method chaining
+         */
+        public MomentoDynamoDBLockClientOptionsBuilder withTotalNumThreadsForAcquiringLocks(final int totalNumThreadsForAcquiringLocks) {
+            this.totalNumThreadsForAcquiringLocks = totalNumThreadsForAcquiringLocks;
+            return this;
+        }
+
+        /**
          * @param partitionKeyName The partition key name. If not specified, the default partition key name of "key" is used.
          * @return a reference to this builder for fluent method chaining
          */
@@ -177,7 +224,9 @@ public class MomentoDynamoDBLockClientOptions {
         }
 
         /**
-         * @param sortKeyName The sort key name. If not specified, we assume that the table does not have a sort key defined.
+         * @param sortKeyName The sort key name. If not specified, we assume that the cache keys do not have a sort key defined.
+         *                    Sort keys in Momento only play the role of concatenating with the partition key to form a unique
+         *                    cache key. This will stay true until Momento has query and scan semantics available.
          * @return a reference to this builder for fluent method chaining
          */
         public MomentoDynamoDBLockClientOptionsBuilder withSortKeyName(final String sortKeyName) {
@@ -186,7 +235,7 @@ public class MomentoDynamoDBLockClientOptions {
         }
 
         /**
-         * @param ownerName The person that is acquiring the lock (for example, box.amazon.com)
+         * @param ownerName The person that is acquiring the lock (for example, hostname.ec2.aws)
          * @return a reference to this builder for fluent method chaining
          */
         public MomentoDynamoDBLockClientOptionsBuilder withOwnerName(final String ownerName) {
@@ -208,7 +257,7 @@ public class MomentoDynamoDBLockClientOptions {
         }
 
         /**
-         * @param heartbeatPeriod How often to update DynamoDB to note that the instance is
+         * @param heartbeatPeriod How often to update Momento to note that the instance is
          *                        still running (recommendation is to make this at least 3
          *                        times smaller than the leaseDuration -- for example
          *                        heartBeatPeriod=1 second, leaseDuration=10 seconds could
@@ -243,13 +292,13 @@ public class MomentoDynamoDBLockClientOptions {
 
         /**
          * This parameter should be set to true only in the applications which do not have strict locking requirements.
-         * When this is set to true, on DynamoDB service unavailable errors it is possible that two different clients can hold the lock.
+         * When this is set to true, on Momento service unavailable errors it is possible that two different clients can hold the lock.
          *
          * When heartbeat fails for lease duration period, the lock expires. If this parameter is set to true, and if a heartbeat
-         * receives AmazonServiceException with a status code of HttpStatus.SC_SERVICE_UNAVAILABLE(503), the lock client will assume
-         * that the heartbeat was a success and update the local state accordingly and it will keep holding the lock.
+         * receives Momento server side exceptions, the lock client will assume that the heartbeat was a success and update
+         * the local state accordingly and it will keep holding the lock.
          *
-         * @param holdLockOnServiceUnavailable Whether or not to hold the lock if DynamoDB Service is unavailable
+         * @param holdLockOnServiceUnavailable Whether or not to hold the lock if Momento Service is unavailable
          * @return a reference to this builder for fluent method chaining
          */
         public MomentoDynamoDBLockClientOptionsBuilder withHoldLockOnServiceUnavailable(final Boolean holdLockOnServiceUnavailable) {
@@ -260,8 +309,8 @@ public class MomentoDynamoDBLockClientOptions {
 
         public MomentoDynamoDBLockClientOptions build() {
             return new MomentoDynamoDBLockClientOptions(configuration, credentialProvider, tableName, partitionKeyName, sortKeyName,
-                    ownerName, leaseDuration, heartbeatPeriod, timeUnit, createHeartbeatBackgroundThread, namedThreadCreator,
-                    holdLockOnServiceUnavailable);
+                    ownerName, leaseDuration, totalNumThreadsForAcquiringLocks, heartbeatPeriod, timeUnit, createHeartbeatBackgroundThread, totalNumBackgroundThreadsForHeartbeating,
+                    namedThreadCreator, holdLockOnServiceUnavailable);
         }
 
 

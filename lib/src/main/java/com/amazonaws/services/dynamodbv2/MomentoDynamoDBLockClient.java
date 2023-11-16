@@ -34,6 +34,41 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
+/**
+ * <p>
+ * Provides a simple library for using DynamoDB's consistent read/write feature to use it for managing distributed locks.
+ * </p>
+ * <p>
+ * In order to use this library, the client must create a cache in Momento, although the library provides a convenience method
+ * for creating that cache (createLockCache.)
+ * </p>
+ * <p>
+ * Here is some example code for how to use the lock client for leader election to work on a resource called "host-2" (it
+ * assumes you already have a Momento cache named lockCache, which can be created with the
+ * {@code createLockCache} helper method):
+ * </p>
+ * <pre>
+ * {@code
+ *  AmazonDynamoDBLockClient lockClient = new MomentoDynamoDBLockClient(
+ *      MomentoDynamoDBLockClientOptions.builder(dynamoDBClient, "lockTable").build();
+ *  try {
+ *      // Attempt to acquire the lock indefinitely, polling Momento every 2 seconds for the lock
+ *      LockItem lockItem = lockClient.acquireLock(
+ *          AcquireLockOptions.builder("host-2")
+ *              .withRefreshPeriod(120L)
+ *              .withAdditionalTimeToWaitForLock(Long.MAX_VALUE / 2L)
+ *              .withTimeUnit(TimeUnit.MILLISECONDS)
+ *              .build());
+ *      if (!lockItem.isExpired()) {
+ *          // do business logic, you can call lockItem.isExpired() to periodically check to make sure you still have the lock
+ *          // the background thread will keep the lock valid for you by sending heartbeats (default is every 5 seconds)
+ *      }
+ *  } catch (LockNotGrantedException x) {
+ *      // Should only be thrown if the lock could not be acquired for Long.MAX_VALUE / 2L milliseconds.
+ *  }
+ * }
+ * </pre>
+ */
 public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implements Closeable  {
     private static final Log logger = LogFactory.getLog(MomentoDynamoDBLockClient.class);
 
@@ -51,7 +86,6 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
 
     private ScheduledExecutorService heartbeatExecutor;
     private MomentoLockClientHeartbeatHandler heartbeatHandler;
-
 
     private final MomentoLockClient momentoLockClient;
     private final Boolean holdLockOnServiceUnavailable;
@@ -86,7 +120,7 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
 
         this.heartbeatHandler = new MomentoLockClientHeartbeatHandler(this.lockStorage,
                 this.cacheClient, this.lockCacheName, Duration.ofMillis(leaseDurationMillis),
-                holdLockOnServiceUnavailable);
+                holdLockOnServiceUnavailable, lockClientOptions.getTotalNumBackgroundThreadsForHeartbeating());
 
         if (lockClientOptions.getCreateHeartbeatBackgroundThread()) {
             if (this.leaseDurationMillis < 2 * this.heartbeatPeriodInMilliseconds) {
@@ -100,8 +134,7 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
                     0, heartbeatPeriodInMilliseconds, TimeUnit.MILLISECONDS);
 
         }
-        this.executorService = new ScheduledThreadPoolExecutor(10);
-
+        this.executorService = new ScheduledThreadPoolExecutor(lockClientOptions.getTotalNumThreadsForAcquiringLocks());
     }
 
     public Stream<LockItem> getAllLocksFromDynamoDB(final boolean deleteOnRelease) {
@@ -122,6 +155,27 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
         }
     }
 
+    /**
+     * <p>
+     * Attempts to acquire a lock until it either acquires the lock, or a specified {@code additionalTimeToWaitForLock} is
+     * reached. This method will poll Momento based on the {@code refreshPeriod}. If it does not see the lock in Momento, it
+     * will immediately return the lock to the caller. If it does see the lock, it waits for as long as {@code additionalTimeToWaitForLock}
+     * without acquiring the lock, then it will throw a {@code LockNotGrantedException}.
+     * </p>
+     * <p>
+     * Note that this method will wait for at least as long as the {@code leaseDuration} in order to acquire a lock that already
+     * exists. If the lock is not acquired in that time, it will wait an additional amount of time specified in
+     * {@code additionalTimeToWaitForLock} before giving up.
+     * </p>
+     * <p>
+     * See the defaults set when constructing a new {@code AcquireLockOptions} object for any fields that you do not set
+     * explicitly.
+     * </p>
+     *
+     * @param options A combination of optional arguments that may be passed in for acquiring the lock
+     * @return the lock
+     * @throws InterruptedException in case the Thread.sleep call was interrupted while waiting to refresh.
+     */
     public LockItem acquireLock(final AcquireLockOptions options) throws LockNotGrantedException, InterruptedException {
         try {
             final String partitionKey = options.getPartitionKey();
@@ -199,6 +253,7 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
 
         while (true) {
 
+            // we simply schedule tasks starting with a 0 delay to implement our custom retries.
             final ScheduledFuture<LockItem> future = executorService.schedule(() -> {
                 logger.trace("Call Momento Get to see if the lock for key = " + cacheKey + "exists in the cache");
 
@@ -259,12 +314,33 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
         }
     }
 
+    /**
+     * Returns true if the client currently owns the lock with @param key and @param sortKey. It returns false otherwise.
+     *
+     * @param key     The partition key representing the lock.
+     * @param sortKey The sort key if present.
+     * @return true if the client owns the lock. It returns false otherwise.
+     */
     public boolean hasLock(final String key, final Optional<String> sortKey) {
         String cacheKey = generateCacheKey(key, sortKey);
         return lockStorage.hasLock(cacheKey);
     }
 
+    /**
+     * Checks whether the lock cache exists in Momento.
+     *
+     * @return true if the cache exists, false otherwise.
+     */
     public boolean lockTableExists() {
+        return lockCacheExists();
+    }
+
+    /**
+     * Checks whether the lock cache exists in Momento.
+     *
+     * @return true if the cache exists, false otherwise.
+     */
+    public boolean lockCacheExists() {
         try {
             return momentoLockClient.lockCacheExists(this.tableName);
         } catch (MomentoClientException e) {
@@ -272,6 +348,15 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
         }
     }
 
+    /**
+     * Attempts to acquire lock. If successful, returns the lock. Otherwise,
+     * returns Optional.empty(). For more details on behavior, please see
+     * {@code acquireLock}.
+     *
+     * @param options The options to use when acquiring the lock.
+     * @return the lock if successful.
+     * @throws InterruptedException in case this.acquireLock was interrupted.
+     */
     public Optional<LockItem> tryAcquireLock(final AcquireLockOptions options) throws InterruptedException {
         try {
             return Optional.of(this.acquireLock(options));
@@ -308,8 +393,22 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
         });
     }
 
+    /**
+     * Finds out who owns the given lock, but does not acquire the lock. It returns the metadata currently associated with the
+     * given lock. If the client currently has the lock, it will return the lock, and operations such as releaseLock will work.
+     * However, if the client does not have the lock, then operations like releaseLock will not work (after calling getLock, the
+     * caller should check lockItem.isExpired() to figure out if it currently has the lock.)
+     *
+     * @param key     The partition key representing the lock.
+     * @param sortKey The sort key if present.
+     * @return A LockItem that represents the lock, if the lock exists.
+     */
     public Optional<LockItem> getLock(final String key, final Optional<String> sortKey) {
         String cacheKey = generateCacheKey(key, sortKey);
+        Optional<LockItem> lockItem = lockStorage.getLock(cacheKey);
+        if (lockItem.isPresent()) {
+            return lockItem;
+        }
         Optional<MomentoLockItem> momentoLockItem = momentoLockClient.getLockFromMomento(cacheKey);
         if (momentoLockItem.isPresent()) {
             MomentoLockItem item = momentoLockItem.get();
@@ -325,6 +424,14 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
         return Optional.empty();
     }
 
+
+    /**
+     * Releases the given lock if the current user still has it, returning true if the lock was successfully released, and false
+     * if someone else already stole the lock. Deletes the lock item if it is released and deleteLockItemOnClose is set.
+     *
+     * @param item The lock item to release
+     * @return true if the lock is released, false otherwise
+     */
     public boolean releaseLock(final LockItem item) {
         Objects.requireNonNull(item, "LockItem cannot be null");
 
@@ -365,7 +472,7 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
                 if (remainingTtl > TTL_GRACE_MILLIS) {
                     final Optional<MomentoLockItem> item = momentoLockClient.getLockFromMomento(momentoLockItem.getCacheKey());
                     if (item.isPresent() && item.get().getOwner().equals(this.owner)) {
-                        momentoLockClient.deleteLockFromMomento(LockItemUtils.toMomentoLockItem(lockItem));
+                        deleted = momentoLockClient.deleteLockFromMomento(LockItemUtils.toMomentoLockItem(lockItem));
                     }
                 }
             } catch (MomentoClientException e) {
@@ -382,10 +489,22 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
         this.lockStorage.getAllLocks().forEach(l -> releaseLock(
                 ReleaseLockOptions.builder(l).withBestEffort(true).build()
         ));
-        this.heartbeatExecutor.shutdown();
-        this.executorService.shutdown();
     }
 
+    /**
+     * <p>
+     * Sends a heartbeat to indicate that the given lock is still being worked on. If using
+     * {@code createHeartbeatBackgroundThread}=true when setting up this object, then this method is unnecessary, because the
+     * background thread will be periodically calling it and sending heartbeats. However, if
+     * {@code createHeartbeatBackgroundThread}=false, then this method must be called to instruct Momento that the lock should
+     * not be expired.
+     * </p>
+     * <p>
+     * The lease duration of the lock will be set to the default specified in the constructor of this class.
+     * </p>
+     *
+     * @param lockItem the lock item row to send a heartbeat and extend lock expiry.
+     */
     public void sendHeartbeat(final LockItem lockItem) {
         this.heartbeatHandler.heartBeat(lockItem, LockItemUtils.toMomentoLockItem(lockItem));
     }
@@ -400,6 +519,9 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
     public void close() throws IOException {
         this.releaseAllLocks();
         this.cacheClient.close();
+
+        this.heartbeatExecutor.shutdown();
+        this.executorService.shutdown();
     }
 
     private static void sessionMonitorArgsValidate(final long safeTimeWithoutHeartbeatMillis, final long heartbeatPeriodMillis, final long leaseDurationMillis)

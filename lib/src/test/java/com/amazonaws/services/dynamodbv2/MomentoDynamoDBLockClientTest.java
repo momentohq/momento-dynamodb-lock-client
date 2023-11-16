@@ -42,6 +42,8 @@ public class MomentoDynamoDBLockClientTest {
                 .withHeartbeatPeriod(3L)
                 .withCreateHeartbeatBackgroundThread(true)
                 .withTimeUnit(TimeUnit.SECONDS)
+                .withTotalNumBackgroundThreadsForHeartbeating(2)
+                .withTotalNumThreadsForAcquiringLocks(20)
                 .build());
         momentoDynamoDBLockClientWithoutHeartbeat = new MomentoDynamoDBLockClient(MomentoDynamoDBLockClientOptions.builder(LOCK_CACHE_NAME_NO_HEARTBEATS)
                 .withConfiguration(Configurations.Laptop.latest())
