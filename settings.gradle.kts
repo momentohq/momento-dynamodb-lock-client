@@ -11,5 +11,5 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.7.0"
 }
 
-rootProject.name = "momento-lock-client"
+rootProject.name = "momento-dynamodb-lock-client"
 include("lib")
