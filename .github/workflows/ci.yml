@@ -25,6 +25,7 @@ jobs:
         with:
           project_status: incubating
           project_stability: beta
+          project_type: other
 
       - name: Commitlint and Other Shared Build Steps
         uses: momentohq/standards-and-practices/github-actions/shared-build@gh-actions-v1
