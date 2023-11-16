@@ -1,10 +1,14 @@
-package com.amazonaws.services.dynamodbv2;
+package momento.lock.client;
 
+import com.amazonaws.services.dynamodbv2.LockItem;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import momento.lock.client.MomentoLockItem;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 import java.io.IOException;
-import java.util.UUID;
+import java.nio.ByteBuffer;
+import java.util.Map;
 
 public class LockItemUtils {
 
@@ -28,28 +32,25 @@ public class LockItemUtils {
         }
     }
 
-
-
     public static MomentoLockItem toMomentoLockItem(final LockItem lockItem) {
 
-        String cacheKey = lockItem.getPartitionKey();
+        String sortKey = null;
+
         if (lockItem.getSortKey().isPresent()) {
-            cacheKey = cacheKey + "_" + lockItem.getSortKey().get();
+            sortKey = lockItem.getSortKey().get();
         }
+
+        final ByteBuffer data = lockItem.getData().isPresent() ? lockItem.getData().get() : null;
+        final Map<String, AttributeValue> additionalData = lockItem.getAdditionalAttributes();
+
         final MomentoLockItem momentoLockItem = new MomentoLockItem(
                 lockItem.getOwnerName(),
                 lockItem.getLeaseDuration(),
-                cacheKey
+                lockItem.getPartitionKey(),
+                sortKey,
+                data,
+                additionalData
         );
         return momentoLockItem;
     }
-
-    public static LockItem fromMomentoLockItem(final AmazonDynamoDBLockClient client,
-                                               final AcquireLockOptions options,
-                                               final MomentoLockItem momentoLockItem) {
-        return new LockItem(client, options.getPartitionKey(), options.getSortKey(), options.getData(), options.getDeleteLockOnRelease(),
-                momentoLockItem.getOwner(), momentoLockItem.getLeaseDuration(), System.currentTimeMillis(), UUID.randomUUID().toString(), false, options.getSessionMonitor(),
-                options.getAdditionalAttributes());
-    }
-
 }

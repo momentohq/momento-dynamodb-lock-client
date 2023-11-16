@@ -1,4 +1,4 @@
-package com.amazonaws.services.dynamodbv2;
+package momento.lock.client;
 
 import momento.sdk.auth.CredentialProvider;
 import momento.sdk.config.Configuration;
@@ -109,7 +109,6 @@ public class MomentoDynamoDBLockClientOptions {
     }
 
     public static class MomentoDynamoDBLockClientOptionsBuilder {
-        private DynamoDbClient dynamoDBClient;
         private String tableName;
         private String partitionKeyName;
         private Optional<String> sortKeyName;
@@ -156,10 +155,6 @@ public class MomentoDynamoDBLockClientOptions {
             this.ownerName = ownerName == null ? generateOwnerNameFromLocalhost() : ownerName;
             this.namedThreadCreator = namedThreadCreator == null ? namedThreadCreator() : namedThreadCreator;
             this.holdLockOnServiceUnavailable = DEFAULT_HOLD_LOCK_ON_SERVICE_UNAVAILABLE;
-        }
-
-        MomentoDynamoDBLockClientOptionsBuilder(final DynamoDbClient dynamoDBClient, final String tableName, final String ownerName) {
-            this(tableName, ownerName, namedThreadCreator());
         }
 
         public MomentoDynamoDBLockClientOptionsBuilder withConfiguration(final Configuration configuration) {

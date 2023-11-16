@@ -1,7 +1,8 @@
-package com.amazonaws.services.dynamodbv2;
+package momento.lock.client;
 
 
-import javax.annotation.concurrent.GuardedBy;
+import com.amazonaws.services.dynamodbv2.LockItem;
+
 import javax.annotation.concurrent.ThreadSafe;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,7 +14,11 @@ public class LockStorage {
     private final ConcurrentHashMap<String, LockItem> locks;
 
     public boolean hasLock(final String cacheKey) {
-        return locks.containsKey(cacheKey);
+        LockItem lockItem = locks.get(cacheKey);
+        if (lockItem == null || lockItem.isExpired()) {
+            return false;
+        }
+        return true;
     }
 
     public boolean removeLock(final String cacheKey) {
@@ -21,12 +26,15 @@ public class LockStorage {
         if (prev != null) {
             return true;
         }
-
         return false;
     }
 
     public Optional<LockItem> getLock(final String cacheKey) {
-        return Optional.of(locks.get(cacheKey));
+        final LockItem lockItem = locks.get(cacheKey);
+        if (lockItem == null || lockItem.isExpired()) {
+            return Optional.empty();
+        }
+        return Optional.of(lockItem);
     }
 
     public void addLock(final String cacheKey, final LockItem lockItem) {

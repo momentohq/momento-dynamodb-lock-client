@@ -1,4 +1,4 @@
-package com.amazonaws.services.dynamodbv2;
+package momento.lock.client;
 
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkClientException;
