@@ -42,12 +42,12 @@ public class MomentoDynamoDBLockClientOptions {
     private int totalNumBackgroundThreadsForHeartbeating;
 
     private final Function<String, ThreadFactory> namedThreadCreator;
-    private final Boolean holdLockOnServiceUnavailable;
+    private final boolean holdLockOnServiceUnavailable;
 
     private MomentoDynamoDBLockClientOptions(final Configuration configuration, final CredentialProvider credentialProvider,
                                              final String tableName, final String partitionKeyName, final Optional<String> sortKeyName,
                                             final String ownerName, final Long leaseDuration, final int totalNumBackgroundThreadsForHeartbeating, final Long heartbeatPeriod, final TimeUnit timeUnit, final Boolean createHeartbeatBackgroundThread,
-                                            final int totalNumThreadsForAcquiringLocks, final Function<String, ThreadFactory> namedThreadCreator, final Boolean holdLockOnServiceUnavailable) {
+                                            final int totalNumThreadsForAcquiringLocks, final Function<String, ThreadFactory> namedThreadCreator, final boolean holdLockOnServiceUnavailable) {
         this.configuration = configuration;
         this.credentialProvider = credentialProvider;
         this.tableName = tableName;
@@ -106,7 +106,7 @@ public class MomentoDynamoDBLockClientOptions {
         return namedThreadCreator;
     }
 
-    public Boolean getHoldLockOnServiceUnavailable() {
+    public boolean getHoldLockOnServiceUnavailable() {
         return holdLockOnServiceUnavailable;
     }
 
@@ -137,7 +137,7 @@ public class MomentoDynamoDBLockClientOptions {
         private TimeUnit timeUnit;
         private Boolean createHeartbeatBackgroundThread;
         private int totalNumBackgroundThreadsForHeartbeating;
-        private Boolean holdLockOnServiceUnavailable;
+        private boolean holdLockOnServiceUnavailable;
         private Function<String, ThreadFactory> namedThreadCreator;
 
         private Configuration configuration;
@@ -191,7 +191,7 @@ public class MomentoDynamoDBLockClientOptions {
 
         /**
          * If you expect each client to own tens or hundreds of locks, you can configure the thread pool size
-         * of {@link MomentoLockClientHeartbeatHandler} so that I heartbeats individual locks in parallel. This might
+         * of {@link MomentoLockClientHeartbeatHandler} so that individual locks heartbeat in parallel. This might
          * be important as you don't want one thread to play catchup while heartbeating, eventually leading to locks being
          * released. The default value for this is 1.
          * @param totalNumBackgroundThreadsForHeartbeating
@@ -301,7 +301,7 @@ public class MomentoDynamoDBLockClientOptions {
          * @param holdLockOnServiceUnavailable Whether or not to hold the lock if Momento Service is unavailable
          * @return a reference to this builder for fluent method chaining
          */
-        public MomentoDynamoDBLockClientOptionsBuilder withHoldLockOnServiceUnavailable(final Boolean holdLockOnServiceUnavailable) {
+        public MomentoDynamoDBLockClientOptionsBuilder withHoldLockOnServiceUnavailable(final boolean holdLockOnServiceUnavailable) {
             this.holdLockOnServiceUnavailable = holdLockOnServiceUnavailable;
             return this;
         }

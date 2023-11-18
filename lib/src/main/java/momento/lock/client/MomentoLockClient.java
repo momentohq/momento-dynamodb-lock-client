@@ -20,9 +20,6 @@ import java.util.concurrent.TimeoutException;
 
 public class MomentoLockClient {
 
-    public class MomentoLockClientResponse {
-
-    }
     private final CacheClient client;
     private final String cacheName;
     private static final Duration MOMENTO_TIMEOUT = Duration.ofSeconds(10);
