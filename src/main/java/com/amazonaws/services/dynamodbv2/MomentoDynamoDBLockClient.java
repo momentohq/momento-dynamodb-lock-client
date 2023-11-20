@@ -50,15 +50,12 @@ import java.util.stream.Stream;
  * <pre>
  * {@code
  *  AmazonDynamoDBLockClient lockClient = new MomentoDynamoDBLockClient(
- *      MomentoDynamoDBLockClientOptions.builder("lockCache")
- *      .withLeaseDuration(120L)
- *      .withTimeUnit(TimeUnit.SECONDS)
- *      .build());
+ *      MomentoDynamoDBLockClientOptions.builder(dynamoDBClient, "lockTable").build();
  *  try {
  *      // Attempt to acquire the lock indefinitely, polling Momento every 2 seconds for the lock
  *      LockItem lockItem = lockClient.acquireLock(
  *          AcquireLockOptions.builder("host-2")
- *              .withRefreshPeriod(2000L)
+ *              .withRefreshPeriod(120L)
  *              .withAdditionalTimeToWaitForLock(Long.MAX_VALUE / 2L)
  *              .withTimeUnit(TimeUnit.MILLISECONDS)
  *              .build());
@@ -91,7 +88,7 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
     private MomentoLockClientHeartbeatHandler heartbeatHandler;
 
     private final MomentoLockClient momentoLockClient;
-    private final boolean holdLockOnServiceUnavailable;
+    private final Boolean holdLockOnServiceUnavailable;
 
     private final ScheduledExecutorService executorService;
 
@@ -258,7 +255,6 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
 
             // we simply schedule tasks starting with a 0 delay to implement our custom retries.
             final ScheduledFuture<LockItem> future = executorService.schedule(() -> {
-
                 logger.trace("Call Momento Get to see if the lock for key = " + cacheKey + "exists in the cache");
 
                 final Optional<MomentoLockItem> lockFromMomento = momentoLockClient.getLockFromMomento(cacheKey);

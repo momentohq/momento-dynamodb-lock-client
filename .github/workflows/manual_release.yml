@@ -1,0 +1,48 @@
+name: 'Manual Release'
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.MOMENTO_MACHINE_USER_GITHUB_TOKEN }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: 'corretto'
+
+      - name: Build project
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: clean build
+
+      - name: Set release
+        id: semrel
+        uses: go-semantic-release/action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          allow-initial-development-versions: true
+          force-bump-patch-version: true
+
+      - name: Output release
+        id: release
+        run: echo "::set-output name=release::${{ steps.semrel.outputs.version }}"
+
+#      - name: Publish to sonatype
+#        env:
+#          SONATYPE_SIGNING_KEY: ${{ secrets.SONATYPE_SIGNING_KEY }}
+#          SONATYPE_SIGNING_KEY_PASSWORD: ${{ secrets.SONATYPE_SIGNING_KEY_PASSWORD }}
+#          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+#          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+#          MOMENTO_DDB_LOCK_VERSION: ${{ steps.semrel.outputs.version }}
+#        uses: gradle/gradle-build-action@v2
+#        with:
+#          arguments: publishToSonatype
