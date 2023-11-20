@@ -50,15 +50,12 @@ import java.util.stream.Stream;
  * <pre>
  * {@code
  *  AmazonDynamoDBLockClient lockClient = new MomentoDynamoDBLockClient(
- *      MomentoDynamoDBLockClientOptions.builder("lockCache")
- *      .withLeaseDuration(120L)
- *      .withTimeUnit(TimeUnit.SECONDS)
- *      .build());
+ *      MomentoDynamoDBLockClientOptions.builder(dynamoDBClient, "lockTable").build();
  *  try {
  *      // Attempt to acquire the lock indefinitely, polling Momento every 2 seconds for the lock
  *      LockItem lockItem = lockClient.acquireLock(
  *          AcquireLockOptions.builder("host-2")
- *              .withRefreshPeriod(2000L)
+ *              .withRefreshPeriod(120L)
  *              .withAdditionalTimeToWaitForLock(Long.MAX_VALUE / 2L)
  *              .withTimeUnit(TimeUnit.MILLISECONDS)
  *              .build());
@@ -91,14 +88,14 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
     private MomentoLockClientHeartbeatHandler heartbeatHandler;
 
     private final MomentoLockClient momentoLockClient;
-    private final boolean holdLockOnServiceUnavailable;
+    private final Boolean holdLockOnServiceUnavailable;
 
     private final ScheduledExecutorService executorService;
 
     public MomentoDynamoDBLockClient(final MomentoDynamoDBLockClientOptions lockClientOptions) {
         super(AmazonDynamoDBLockClientOptions.builder(new NoopDynamoDbClient(), lockClientOptions.getCacheName()).build());
         Objects.requireNonNull(lockClientOptions.getTableName(), "Table name cannot be null");
-        Objects.requireNonNull(lockClientOptions.getCacheName(), "Cache name cannot be null");
+        Objects.requireNonNull(lockClientOptions.getCacheName(), "Table name cannot be null");
         Objects.requireNonNull(lockClientOptions.getOwnerName(), "Owner name cannot be null");
         Objects.requireNonNull(lockClientOptions.getTimeUnit(), "Time unit cannot be null");
         Objects.requireNonNull(lockClientOptions.getPartitionKeyName(), "Partition Key Name cannot be null");
@@ -258,39 +255,38 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
 
             // we simply schedule tasks starting with a 0 delay to implement our custom retries.
             final ScheduledFuture<LockItem> future = executorService.schedule(() -> {
-
                 logger.trace("Call Momento Get to see if the lock for key = " + cacheKey + "exists in the cache");
 
                 final Optional<MomentoLockItem> lockFromMomento = momentoLockClient.getLockFromMomento(cacheKey);
 
-                if (!lockFromMomento.isPresent() && options.getAcquireOnlyIfLockAlreadyExists()) {
-                    throw new LockNotGrantedException("Lock does not exist.");
-                }
+                        if (!lockFromMomento.isPresent() && options.getAcquireOnlyIfLockAlreadyExists()) {
+                            throw new LockNotGrantedException("Lock does not exist.");
+                        }
 
-                if (lockFromMomento.isPresent()) {
+                        if (lockFromMomento.isPresent()) {
 
-                    if (options.shouldSkipBlockingWait()) {
-                        /*
-                         * The lock is being held by someone else, and the caller explicitly said not to perform a blocking wait;
-                         * We will throw back a lock not grant exception, so that the caller can retry if needed.
-                         */
-                        throw new LockCurrentlyUnavailableException("The lock being requested is being held by another client.");
-                    }
-                }
+                            if (options.shouldSkipBlockingWait()) {
+                                /*
+                                 * The lock is being held by someone else, and the caller explicitly said not to perform a blocking wait;
+                                 * We will throw back a lock not grant exception, so that the caller can retry if needed.
+                                 */
+                                throw new LockCurrentlyUnavailableException("The lock being requested is being held by another client.");
+                            }
+                        }
 
-                boolean acquired = momentoLockClient.acquireLockInMomento(LockItemUtils.toMomentoLockItem(lockItem));
+                        boolean acquired = momentoLockClient.acquireLockInMomento(LockItemUtils.toMomentoLockItem(lockItem));
 
-                if (acquired) return lockItem;
-                else {
-                    if (LockClientUtils.INSTANCE.millisecondTime() - startTimeMillis > totalWaitTime) {
-                        throw new LockNotGrantedException("Didn't acquire lock after sleeping for " + (LockClientUtils.INSTANCE.millisecondTime() - startTimeMillis) + " milliseconds");
-                    }
-                    logger.debug("Someone else has the lock for key " + cacheKey + " .I will block until the " +
-                            " lease duration plus the configured timeout through additionalTimeToWaitForLock" );
-                    return null;
-                }
+                        if (acquired) return lockItem;
+                        else {
+                            if (LockClientUtils.INSTANCE.millisecondTime() - startTimeMillis > totalWaitTime) {
+                                throw new LockNotGrantedException("Didn't acquire lock after sleeping for " + (LockClientUtils.INSTANCE.millisecondTime() - startTimeMillis) + " milliseconds");
+                            }
+                            logger.debug("Someone else has the lock for key " + cacheKey + " .I will block until the " +
+                                    " lease duration plus the configured timeout through additionalTimeToWaitForLock" );
+                            return null;
+                        }
 
-            }, delay, TimeUnit.MILLISECONDS);
+                    }, delay, TimeUnit.MILLISECONDS);
 
             final LockItem item = future.get();
 
