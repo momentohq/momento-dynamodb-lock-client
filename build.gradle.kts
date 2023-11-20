@@ -52,6 +52,7 @@ java {
 
 // Only run publishing tasks if the required environment variables are present
 val safeToPublish = provider {
+    !System.getenv("MOMENTO_DDB_LOCK_VERSION").isNullOrEmpty() &&
             !System.getenv("SONATYPE_USERNAME").isNullOrEmpty() &&
             !System.getenv("SONATYPE_PASSWORD").isNullOrEmpty() &&
             !System.getenv("SONATYPE_SIGNING_KEY").isNullOrEmpty() &&
