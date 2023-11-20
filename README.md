@@ -57,12 +57,12 @@ public class Example {
                 .withTimeUnit(TimeUnit.SECONDS)
                 .build());
 
-        //try to acquire a lock on the partition key "Moe"
+        //try to acquire a lock on the key "segment-1"
         final Optional<LockItem> lockItem =
                 client.tryAcquireLock(AcquireLockOptions.builder("segment-1").build());
         if (lockItem.isPresent()) {
-            System.out.println("Acquired lock! If I die, my lock will expire in 10 seconds.");
-            System.out.println("Otherwise, I will hold it until I stop heartbeating.");
+            System.out.println("Lock has been acquired and will expire in 2 mins if heartbeating stops. Otherwise," +
+                    " will be kept with me!");
             client.releaseLock(lockItem.get());
         } else {
             System.out.println("Failed to acquire lock!");
