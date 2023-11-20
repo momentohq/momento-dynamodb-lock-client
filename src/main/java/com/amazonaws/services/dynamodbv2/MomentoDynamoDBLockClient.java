@@ -95,7 +95,7 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
     public MomentoDynamoDBLockClient(final MomentoDynamoDBLockClientOptions lockClientOptions) {
         super(AmazonDynamoDBLockClientOptions.builder(new NoopDynamoDbClient(), lockClientOptions.getCacheName()).build());
         Objects.requireNonNull(lockClientOptions.getTableName(), "Table name cannot be null");
-        Objects.requireNonNull(lockClientOptions.getCacheName(), "Table name cannot be null");
+        Objects.requireNonNull(lockClientOptions.getCacheName(), "Cache name cannot be null");
         Objects.requireNonNull(lockClientOptions.getOwnerName(), "Owner name cannot be null");
         Objects.requireNonNull(lockClientOptions.getTimeUnit(), "Time unit cannot be null");
         Objects.requireNonNull(lockClientOptions.getPartitionKeyName(), "Partition Key Name cannot be null");
@@ -259,34 +259,34 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
 
                 final Optional<MomentoLockItem> lockFromMomento = momentoLockClient.getLockFromMomento(cacheKey);
 
-                        if (!lockFromMomento.isPresent() && options.getAcquireOnlyIfLockAlreadyExists()) {
-                            throw new LockNotGrantedException("Lock does not exist.");
+                    if (!lockFromMomento.isPresent() && options.getAcquireOnlyIfLockAlreadyExists()) {
+                        throw new LockNotGrantedException("Lock does not exist.");
+                    }
+
+                    if (lockFromMomento.isPresent()) {
+
+                        if (options.shouldSkipBlockingWait()) {
+                            /*
+                             * The lock is being held by someone else, and the caller explicitly said not to perform a blocking wait;
+                             * We will throw back a lock not grant exception, so that the caller can retry if needed.
+                             */
+                            throw new LockCurrentlyUnavailableException("The lock being requested is being held by another client.");
                         }
+                    }
 
-                        if (lockFromMomento.isPresent()) {
+                    boolean acquired = momentoLockClient.acquireLockInMomento(LockItemUtils.toMomentoLockItem(lockItem));
 
-                            if (options.shouldSkipBlockingWait()) {
-                                /*
-                                 * The lock is being held by someone else, and the caller explicitly said not to perform a blocking wait;
-                                 * We will throw back a lock not grant exception, so that the caller can retry if needed.
-                                 */
-                                throw new LockCurrentlyUnavailableException("The lock being requested is being held by another client.");
-                            }
+                    if (acquired) return lockItem;
+                    else {
+                        if (LockClientUtils.INSTANCE.millisecondTime() - startTimeMillis > totalWaitTime) {
+                            throw new LockNotGrantedException("Didn't acquire lock after sleeping for " + (LockClientUtils.INSTANCE.millisecondTime() - startTimeMillis) + " milliseconds");
                         }
+                        logger.debug("Someone else has the lock for key " + cacheKey + " .I will block until the " +
+                                " lease duration plus the configured timeout through additionalTimeToWaitForLock" );
+                        return null;
+                    }
 
-                        boolean acquired = momentoLockClient.acquireLockInMomento(LockItemUtils.toMomentoLockItem(lockItem));
-
-                        if (acquired) return lockItem;
-                        else {
-                            if (LockClientUtils.INSTANCE.millisecondTime() - startTimeMillis > totalWaitTime) {
-                                throw new LockNotGrantedException("Didn't acquire lock after sleeping for " + (LockClientUtils.INSTANCE.millisecondTime() - startTimeMillis) + " milliseconds");
-                            }
-                            logger.debug("Someone else has the lock for key " + cacheKey + " .I will block until the " +
-                                    " lease duration plus the configured timeout through additionalTimeToWaitForLock" );
-                            return null;
-                        }
-
-                    }, delay, TimeUnit.MILLISECONDS);
+                }, delay, TimeUnit.MILLISECONDS);
 
             final LockItem item = future.get();
 

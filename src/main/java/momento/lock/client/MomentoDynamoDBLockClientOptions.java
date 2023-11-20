@@ -195,7 +195,7 @@ public class MomentoDynamoDBLockClientOptions {
 
         /**
          * If you expect each client to own tens or hundreds of locks, you can configure the thread pool size
-         * of {@link MomentoLockClientHeartbeatHandler} so that I heartbeats individual locks in parallel. This might
+         * of {@link MomentoLockClientHeartbeatHandler} so that individual locks heartbeat in parallel. This might
          * be important as you don't want one thread to play catchup while heartbeating, eventually leading to locks being
          * released. The default value for this is 1.
          * @param totalNumBackgroundThreadsForHeartbeating
