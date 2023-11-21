@@ -100,6 +100,9 @@ public class MomentoLockClientHeartbeatHandler implements Runnable, Closeable {
                             if (holdLock(((UpdateTtlResponse.Error) updateTtlResponse).getErrorCode())) {
                                 logger.warn("Service Unavailable. Holding the lock as holdLockOnServiceUnavailable is set to true.");
                                 lockItem.updateLookUpTime(LockClientUtils.INSTANCE.millisecondTime());
+                            } else {
+                                // lock expired but is still in memory for heartbeating, so we need to remove it
+                                this.lockStorage.removeLock(momentoLockItem.getCacheKey());
                             }
                         }
                     } else {
@@ -115,6 +118,9 @@ public class MomentoLockClientHeartbeatHandler implements Runnable, Closeable {
                         logger.warn("Service Unavailable. Holding the lock as holdLockOnServiceUnavailable is set to true." +
                                 " lockKey " + momentoLockItem.getCacheKey());
                         lockItem.updateLookUpTime(LockClientUtils.INSTANCE.millisecondTime());
+                    } else {
+                        // lock expired but is still in memory for heartbeating, so we need to remove it
+                        this.lockStorage.removeLock(momentoLockItem.getCacheKey());
                     }
                 }
             } else if (itemGetTtlResponse instanceof ItemGetTtlResponse.Error) {
@@ -122,6 +128,9 @@ public class MomentoLockClientHeartbeatHandler implements Runnable, Closeable {
                     logger.warn("Service Unavailable. Holding the lock as holdLockOnServiceUnavailable is set to true." +
                             " lockKey " + momentoLockItem.getCacheKey());
                     lockItem.updateLookUpTime(LockClientUtils.INSTANCE.millisecondTime());
+                } else {
+                    // lock expired but is still in memory for heartbeating, so we need to remove it
+                    this.lockStorage.removeLock(momentoLockItem.getCacheKey());
                 }
             } else {
                 logger.debug("Got a itemGetTtlResponse miss for cache key " + momentoLockItem.getCacheKey() + " in round " + String.valueOf(rounds));
