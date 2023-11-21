@@ -24,6 +24,18 @@ While advanced consensus algorithms like Raft and Paxos offer solutions to these
 
 ## Usage
 
+Install the dependency:
+
+```xml
+<dependency>
+  <groupId>software.momento.java</groupId>
+  <artifactId>momento-dynamodb-lock-client</artifactId>
+  <version>0.1.0</version>
+</dependency>
+```
+
+Initialize your client and start locking!
+
 ```java
 
 import com.amazonaws.services.dynamodbv2.AcquireLockOptions;
