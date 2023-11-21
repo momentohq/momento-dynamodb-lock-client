@@ -518,10 +518,10 @@ public class MomentoDynamoDBLockClient extends AmazonDynamoDBLockClient implemen
     @Override
     public void close() throws IOException {
         this.releaseAllLocks();
-        this.cacheClient.close();
-
         this.heartbeatExecutor.shutdown();
         this.executorService.shutdown();
+        this.cacheClient.close();
+
     }
 
     private static void sessionMonitorArgsValidate(final long safeTimeWithoutHeartbeatMillis, final long heartbeatPeriodMillis, final long leaseDurationMillis)
