@@ -47,4 +47,4 @@ jobs:
           MOMENTO_DDB_LOCK_VERSION: ${{ steps.semrel.outputs.version }}
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: publishToSonatype closeSonatypeStagingRepository
+          arguments: publishToSonatype closeAndReleaseStagingRepository
