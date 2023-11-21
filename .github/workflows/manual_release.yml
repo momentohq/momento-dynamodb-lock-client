@@ -38,13 +38,13 @@ jobs:
         id: release
         run: echo "::set-output name=release::${{ steps.semrel.outputs.version }}"
 
-#      - name: Publish to sonatype
-#        env:
-#          SONATYPE_SIGNING_KEY: ${{ secrets.SONATYPE_SIGNING_KEY }}
-#          SONATYPE_SIGNING_KEY_PASSWORD: ${{ secrets.SONATYPE_SIGNING_KEY_PASSWORD }}
-#          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-#          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-#          MOMENTO_DDB_LOCK_VERSION: ${{ steps.semrel.outputs.version }}
-#        uses: gradle/gradle-build-action@v2
-#        with:
-#          arguments: publishToSonatype
+      - name: Publish to sonatype
+        env:
+          SONATYPE_SIGNING_KEY: ${{ secrets.SONATYPE_SIGNING_KEY }}
+          SONATYPE_SIGNING_KEY_PASSWORD: ${{ secrets.SONATYPE_SIGNING_KEY_PASSWORD }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          MOMENTO_DDB_LOCK_VERSION: ${{ steps.semrel.outputs.version }}
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: publishToSonatype closeSonatypeStagingRepository
